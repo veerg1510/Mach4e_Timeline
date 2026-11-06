@@ -1,0 +1,1038 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MACH4e Acquisition Timeline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: an instrument page. Header and constants, then one logic-analyzer style timeline with transport controls and a guided tour, then the cycle strip, findings and the event log. */
+:root{
+  --paper:#f2f4f1; --panel:#ffffff; --ink:#1a2024; --muted:#5a656c; --line:#d6ddd8; --grid:#e8ece9; --chip:#eef1ee;
+  --ekos:#c25a14; --bmode:#2b58a0; --pci:#0c8174; --host:#7148ab; --warn:#bb3727; --ok:#287f4f; --focus:#2b58a0;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#111417; --panel:#171b1f; --ink:#e4e8e5; --muted:#9ba5ab; --line:#2b3237; --grid:#22282c; --chip:#1f2428;
+    --ekos:#f0863a; --bmode:#76a0e6; --pci:#3cc2b2; --host:#b08fe6; --warn:#f0705f; --ok:#5ec68c; --focus:#76a0e6;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#111417; --panel:#171b1f; --ink:#e4e8e5; --muted:#9ba5ab; --line:#2b3237; --grid:#22282c; --chip:#1f2428;
+  --ekos:#f0863a; --bmode:#76a0e6; --pci:#3cc2b2; --host:#b08fe6; --warn:#f0705f; --ok:#5ec68c; --focus:#76a0e6;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 56px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:30px}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(30px,4.4vw,46px);line-height:1.04;letter-spacing:-.01em;margin:6px 0 12px;text-wrap:balance}
+h2{font-family:var(--f-display);font-weight:600;font-size:23px;line-height:1.2;margin:0 0 10px;text-wrap:balance}
+h3{font-family:var(--f-display);font-weight:600;font-size:19px;line-height:1.25;margin:2px 0 6px;text-wrap:balance}
+p{margin:0}
+.lede{max-width:70ch;color:var(--muted)}
+.consts{display:flex;flex-wrap:wrap;gap:10px 30px;margin:18px 0 0;padding-block:12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.consts div{display:grid;gap:1px}
+.consts dt{font-size:12px;color:var(--muted)}
+.consts dd{margin:0;font-family:var(--f-mono);font-size:15px;font-variant-numeric:tabular-nums}
+.player{background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.bar{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+.bar .sep{flex:1 1 auto}
+button,select{font:500 13px var(--f-body);color:var(--ink);background:var(--chip);border:1px solid var(--line);border-radius:4px;padding:6px 10px;cursor:pointer}
+button.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);min-width:104px}
+button:hover,select:hover{border-color:var(--muted)}
+button:focus-visible,select:focus-visible,input:focus-visible,tr:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.small{font-size:12px;color:var(--muted)}
+.tlwrap{position:relative;touch-action:pan-y;cursor:grab;overflow:hidden}
+.tlwrap:active{cursor:grabbing}
+canvas{display:block;width:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 22px;padding:8px 12px;border-top:1px solid var(--line);font-size:12px}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.hint{padding:6px 12px 8px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+.caption{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);border-top:1px solid var(--line)}
+.cap{padding:14px 16px 16px;min-width:0}
+.cap .stepno{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.cap p{max-width:68ch}
+.now{padding:14px 16px 16px;border-left:1px solid var(--line);min-width:0}
+.now h4{margin:0 0 8px;font:600 12px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.now h4 span{font-variant-numeric:tabular-nums;color:var(--ink);text-transform:none;letter-spacing:0}
+.nowlist{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;margin:0;font-size:13px}
+.nowlist dt{display:flex;align-items:center;gap:6px;color:var(--muted);white-space:nowrap}
+.nowlist dd{margin:0;font-variant-numeric:tabular-nums}
+.sw{width:9px;height:9px;border-radius:2px;display:inline-block}
+.chapters{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px;border-top:1px solid var(--line)}
+.chap{font-family:var(--f-mono);font-size:12px;padding:4px 8px}
+.chap[aria-current="step"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 20px;padding:14px 12px;border-top:1px solid var(--line);background:var(--chip)}
+.f{display:grid;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+.f .top{display:flex;justify-content:space-between;gap:8px}
+.f output{font-family:var(--f-mono);color:var(--ink);font-variant-numeric:tabular-nums}
+.f select{width:100%}
+input[type=range]{width:100%;accent-color:var(--ink)}
+@media (max-width:760px){.caption{grid-template-columns:1fr}.now{border-left:0;border-top:1px solid var(--line)}}
+section{min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px}
+.strip-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;align-items:end;margin-bottom:10px}
+.strip-head .f{width:min(280px,100%)}
+.counts{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:10px;font-size:13px}
+.counts b{font-family:var(--f-mono);font-weight:500;font-variant-numeric:tabular-nums}
+.findings{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:14px}
+.find{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;display:grid;gap:6px;align-content:start}
+.find .k{font-family:var(--f-mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase}
+.find .k.warn{color:var(--warn)} .find .k.info{color:var(--muted)}
+.find h3{font-size:17px;margin:0}
+.find p{font-size:14px;color:var(--ink)}
+.find code,.prose code,td code{font-family:var(--f-mono);font-size:.88em;background:var(--chip);padding:0 4px;border-radius:3px}
+.tablewrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:640px}
+th,td{text-align:left;padding:7px 12px;border-bottom:1px solid var(--grid);vertical-align:top}
+th{font:600 12px var(--f-body);color:var(--muted);background:var(--chip)}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--chip)}
+.lane{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.prose{display:grid;gap:8px;max-width:78ch;font-size:14px}
+.prose ul{margin:0;padding-left:20px;display:grid;gap:5px}
+.prose a{color:var(--bmode)}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Verasonics Vantage NXT · L11-5v · EKOS Definity · SetUpL115_PCI_260925</div>
+    <h1>When every pulse fires, and what records it</h1>
+    <p class="lede">A replay of one acquisition loop from your NXT setup script, aligned to the EKOS therapy pulses. Play the tour to step through it, or drag and zoom the timeline yourself. Every time on the page is computed from the script's own parameters; the few guesses are listed at the bottom and can be changed in the settings.</p>
+    <dl class="consts" id="consts"></dl>
+  </header>
+
+  <section class="player" aria-label="Acquisition timeline">
+    <div class="bar">
+      <button class="primary" id="tourBtn" type="button">Play tour</button>
+      <button id="prevBtn" type="button" aria-label="Previous step">Prev</button>
+      <button id="nextBtn" type="button" aria-label="Next step">Next</button>
+      <span class="sep"></span>
+      <button id="freeBtn" type="button">Run freely</button>
+      <select id="speed" aria-label="Playback speed">
+        <option value="1">1/1000 of real time</option>
+        <option value="5">1/200 of real time</option>
+        <option value="20" selected>1/50 of real time</option>
+        <option value="100">1/10 of real time</option>
+        <option value="1000">Real time</option>
+      </select>
+      <select id="preset" aria-label="Zoom to">
+        <option value="">Zoom to…</option>
+        <option value="loop">Whole loop</option>
+        <option value="two">Two loops</option>
+        <option value="frame">B-mode frame 1</option>
+        <option value="line">First 3 B-mode lines</option>
+        <option value="pci">PCI frame 1</option>
+        <option value="win">First 0.75 ms of PCI</option>
+      </select>
+      <button id="zin" type="button" aria-label="Zoom in">+</button>
+      <button id="zout" type="button" aria-label="Zoom out">−</button>
+    </div>
+    <div class="tlwrap" id="tlwrap"><canvas id="tl" role="img" aria-label="Timing diagram with lanes for EKOS pulses, trigger, sequencer, B-mode, PCI receive, MATLAB host and saved files"></canvas></div>
+    <div class="legend" aria-label="Line legend">
+      <span><svg width="30" height="10" aria-hidden="true"><line x1="1" y1="5" x2="29" y2="5" stroke="var(--pci)" stroke-width="1.6" stroke-dasharray="2 3"/></svg>PCI file ← the PCI record it holds</span>
+      <span><svg width="30" height="10" aria-hidden="true"><line x1="1" y1="5" x2="29" y2="5" stroke="var(--bmode)" stroke-width="1.6" stroke-dasharray="2 3"/></svg>B-mode file ← the frame it holds</span>
+      <span><svg width="30" height="10" aria-hidden="true"><line x1="1" y1="5" x2="29" y2="5" stroke="var(--ok)" stroke-width="2"/></svg>Correct pair: same loop</span>
+      <span><svg width="30" height="10" aria-hidden="true"><line x1="1" y1="5" x2="29" y2="5" stroke="var(--warn)" stroke-width="2" stroke-dasharray="5 4"/></svg>Pair the timestamp rule picks: previous loop</span>
+    </div>
+    <div class="hint">Drag to pan. Pinch, or Ctrl + scroll, to zoom. Click to move the playhead. Time is measured from Event 1 of the first loop.</div>
+    <div class="caption">
+      <div class="cap" aria-live="polite">
+        <div class="stepno" id="stepNo"></div>
+        <h3 id="stepTitle"></h3>
+        <p id="stepText"></p>
+      </div>
+      <div class="now">
+        <h4>At the playhead · <span id="nowT"></span></h4>
+        <dl class="nowlist" id="nowList"></dl>
+      </div>
+    </div>
+    <div class="chapters" id="chapters" aria-label="Tour steps"></div>
+    <div class="settings">
+      <label class="f" for="scheme"><span class="top">EKOS protocol</span>
+        <select id="scheme">
+          <option value="mach4e">MACH4e acoustic sequence (30 rows, 1.40 s cycle)</option>
+          <option value="p1">3 ms · 50 Hz · 18 W (pulsescheme 1)</option>
+          <option value="p2">15 ms · 10 Hz · 18 W (needs lengthekos 34000)</option>
+        </select>
+      </label>
+      <label class="f" for="trigAll"><span class="top">EKOS sends a trigger on</span>
+        <select id="trigAll">
+          <option value="0" selected>Powered rows only (assumed)</option>
+          <option value="1">Every row, including the 0 W rows</option>
+        </select>
+      </label>
+      <label class="f" for="phase"><span class="top">Sequence position at loop start <output id="phaseOut"></output></span>
+        <input id="phase" type="range" min="0" max="99" step="1" value="0"></label>
+      <label class="f" for="hostPCI"><span class="top">savepci1 run time (assumed) <output id="hostPCIOut"></output></span>
+        <input id="hostPCI" type="range" min="100" max="6000" step="50" value="1200"></label>
+      <label class="f" for="hostB"><span class="top">savebmode run time (assumed) <output id="hostBOut"></output></span>
+        <input id="hostB" type="range" min="10" max="1000" step="10" value="60"></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>The MACH4e acoustic sequence</h2>
+    <div class="panel">
+      <div class="strip-head">
+        <p class="small" style="max-width:70ch">One cycle of the sequence table: rows 0–5 are six powered pulses in 254 ms, rows 6–29 are 0 W, and the cycle repeats every 1.397 s. Bar height is power, bar width is pulse length. The counts below replay a 30 min run with the current settings and show which pulse each saved PCI file captured. That is what sorts files into the 4ms, 5ms, 7ms and 8ms folders.</p>
+      </div>
+      <canvas id="strip" role="img" aria-label="MACH4e acoustic sequence, one cycle, with the number of saved PCI files per row"></canvas>
+      <div class="counts" id="counts"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What the timeline shows</h2>
+    <div class="findings" id="findings"></div>
+  </section>
+
+  <section>
+    <h2>Event log for the first loop</h2>
+    <p class="small" style="margin-bottom:10px">Event numbers are the indices into the script's <code>Event</code> array. Select a row to jump the timeline there.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Time</th><th>Event</th><th>Lane</th><th>What happens</th></tr></thead>
+      <tbody id="evbody"></tbody>
+    </table></div>
+  </section>
+
+  <section class="prose">
+    <h2>Assumptions and sources</h2>
+    <ul>
+      <li>Pulse power, width and PRI come from the MACH4e acoustic sequence table (rows 0–29). Each row's PRI is taken as the time from that row's start to the next row's start. Suarez Escudero et al. (2023) state the scanner was triggered by the EKOS driving unit at the start of each pulse. Whether the 0 W rows also send a trigger is not known, so it is a setting. Trigger latency is taken as zero.</li>
+      <li>A <code>triggerIn</code> wait starts once the previous <code>timeToNextAcq</code> has elapsed, so edges that arrive earlier are ignored.</li>
+      <li>The sequence does not resume until <code>savepci1</code> and <code>savebmode</code> return. Their run times are guesses. The spacing of your <code>190503trig1pos1_</code> filename stamps gives the real loop period.</li>
+      <li>Reconstruction and transfer blocks are drawn short and not to scale. L11-5v pitch 0.30 mm, c = 1540 m/s, 31.25 MHz sampling (NS200BW at 7.8125 MHz).</li>
+      <li>Filename stamps use an example clock of 14:03:27.500. The script writes milliseconds since midnight with 8 digits.</li>
+    </ul>
+    <p>Source: <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC10581030/" target="_blank" rel="noopener">Quantifying the effect of acoustic parameters on temporal and spatial cavitation activity: Gauging cavitation dose (PMC10581030)</a></p>
+  </section>
+</div>
+
+<script>
+(() => {
+/*SIM-START*/
+const LINE_SLOT = 0.142, LINE_RX = 0.092416, NLINES = 128;
+const WAIT_DELAY = 32.7, WAIT_FRAME = 60.142, WAIT_PCI = 15.7;
+const FS_PER_MS = 31250, LIVE_A = 0.288, LIVE_B = 0.576, F_EKOS = 2250; // cycles per ms
+const BASE_MS = 50607500; // 14:03:27.500 as milliseconds since midnight
+const MAXW = 47.28;
+// MACH4e acoustic sequence table: [power W, pulse width ms, PRI ms]
+const MACH4E_ROWS = [[9.00, 8.06, 47.62], [15.00, 5.00, 37.04], [30.00, 6.86, 47.62], [47.28, 4.00, 37.04], [30.00, 6.86, 47.62], [15.00, 5.00, 37.04]]
+  .concat(Array.from({length:24}, () => [0, 1.00, 47.62]));
+const PROTOCOLS = {
+  mach4e:{name:'MACH4e', rows:MACH4E_ROWS, rec:8.892416, ns:277888},
+  p1:{name:'3 ms · 50 Hz protocol', rows:[[18, 3.0, 20]], rec:4.001792, ns:125056},
+  p2:{name:'15 ms · 10 Hz protocol', rows:[[18, 15.0, 100]], rec:15.11424, ns:472320}
+};
+const FOLDER = pd => pd >= 7.5 ? '8ms' : pd >= 6 ? '7ms' : pd >= 4.5 ? '5ms' : pd >= 3.5 ? '4ms' : pd + ' ms';
+
+function makeTrain(pr, phasePct, trigAll){
+  const rows = pr.rows.map((r, i) => ({i, W:r[0], pd:r[1], pri:r[2]}));
+  let off = 0; for (const r of rows){ r.off = off; off += r.pri; }
+  const Tc = off, phi = phasePct / 100 * Tc;
+  const trig = rows.filter(r => trigAll || r.W > 0);
+  const minPri = Math.min(...rows.map(r => r.pri));
+  return {rows, Tc, phi, trigAll, minPri,
+    sends: r => trigAll || r.W > 0,
+    pulsesIn(a, b, max = 6000){
+      const out = []; const k0 = Math.floor((a - phi) / Tc) - 1, k1 = Math.floor((b - phi) / Tc) + 1;
+      for (let k = k0; k <= k1 && out.length < max; k++) for (const r of rows){
+        const s = phi + k * Tc + r.off; if (s + r.pd >= a && s <= b) out.push({s, e:s + r.pd, r, k});
+      }
+      return out;
+    },
+    nextTrig(t){
+      for (let k = Math.floor((t - phi) / Tc) - 1; ; k++)
+        for (const r of trig){ const s = phi + k * Tc + r.off; if (s >= t - 1e-9) return {s, r, k}; }
+    },
+    prevTrig(t){
+      for (let k = Math.floor((t - phi) / Tc) + 1; ; k--)
+        for (let j = trig.length - 1; j >= 0; j--){ const r = trig[j], s = phi + k * Tc + r.off; if (s <= t + 1e-9) return {s, r, k}; }
+    },
+    at(t){
+      const k = Math.floor((t - phi) / Tc), u = t - phi - k * Tc;
+      let r = rows[0]; for (const x of rows) if (x.off <= u) r = x;
+      return {r, s:phi + k * Tc + r.off, k};
+    }
+  };
+}
+const rowTag = r => r.W > 0 ? `row ${r.i}, ${r.W} W, ${r.pd} ms` : `row ${r.i}, 0 W`;
+
+function simulate(pr, prm, nLoops){
+  const train = makeTrain(pr, prm.phasePct, prm.trigAll);
+  const S = {train, pr, seq:[], dummy:[], frames:[], pcis:[], host:[], files:[], xfer:[], loops:[], used:[]};
+  let t = 0, nextAcq = 0;
+  for (let L = 0; L < nLoops; L++){
+    const lp = {L, start: Math.max(t, nextAcq)};
+    for (let i = 1; i <= 4; i++){
+      const ev0 = 131 * (i - 1);
+      const tD = Math.max(nextAcq, t);
+      S.dummy.push({t:tD, L, i, ev:ev0 + 1});
+      S.seq.push({a:tD, b:tD + WAIT_DELAY, type:'wait', label:'timeToNextAcq 32.7 ms', ev:ev0 + 1});
+      nextAcq = tD + WAIT_DELAY;
+      const tr = train.nextTrig(nextAcq), trig = tr.s;
+      if (trig > nextAcq + 1e-6) S.seq.push({a:nextAcq, b:trig, type:'trig', label:'triggerIn: waiting for an EKOS edge', ev:ev0 + 2});
+      const last = trig + (NLINES - 1) * LINE_SLOT, end = last + LINE_RX;
+      S.frames.push({a:trig, b:end, L, i, ev:ev0 + 2, row:tr.r});
+      S.used.push({t:trig, L, what:'B-mode frame ' + i, ev:ev0 + 2, row:tr.r});
+      S.seq.push({a:trig, b:end, type:'bmode', label:'B-mode frame ' + i + ' · 128 lines', ev:ev0 + 2});
+      S.xfer.push({t:end, L, ev:ev0 + 130});
+      S.host.push({a:end + 0.3, b:end + 0.3 + prm.recon, type:'recon', label:'imageDisplay, frame ' + i, L, i, ev:ev0 + 131});
+      nextAcq = last + WAIT_FRAME;
+      S.seq.push({a:end, b:nextAcq, type:'wait', label:'timeToNextAcq 60.142 ms', ev:ev0 + 129});
+      t = last;
+    }
+    for (let k = 1; k <= 2; k++){
+      const ev = 524 + 2 * k - 1;
+      const tr = train.nextTrig(nextAcq), trig = tr.s;
+      if (trig > nextAcq + 1e-6) S.seq.push({a:nextAcq, b:trig, type:'trig', label:'triggerIn: waiting for an EKOS edge', ev});
+      S.pcis.push({a:trig, b:trig + pr.rec, L, k, ev, saved:k === 1, row:tr.r});
+      S.used.push({t:trig, L, what:'PCI frame ' + k, ev, row:tr.r});
+      S.seq.push({a:trig, b:trig + pr.rec, type:'pci', label:'PCI frame ' + k + ' · passive receive', ev});
+      S.xfer.push({t:trig + pr.rec, L, ev:ev + 1});
+      nextAcq = trig + WAIT_PCI;
+      if (k === 1) S.seq.push({a:trig + pr.rec, b:nextAcq, type:'wait', label:'timeToNextAcq 15.7 ms', ev});
+      t = trig;
+    }
+    const p1 = S.pcis[S.pcis.length - 2], p2 = S.pcis[S.pcis.length - 1];
+    const h0 = p2.b + 0.5, h1 = h0 + prm.hostPCI, h2 = h1 + prm.hostB;
+    S.host.push({a:h0, b:h1, type:'savepci1', label:'savepci1: write PCI frame 1 to disk', L, ev:529});
+    S.host.push({a:h1, b:h2, type:'savebmode', label:'savebmode: write the displayed B-mode', L, ev:531});
+    S.files.push({t:h0 + 2, kind:'pci', L, src:p1});
+    S.files.push({t:h1 + 1, kind:'bmode', L, src:S.frames[S.frames.length - 1]});
+    S.seq.push({a:h0, b:h2, type:'host', label:'host busy: savepci1, returnToMatlab, savebmode', ev:529});
+    t = h2; lp.end = h2; lp.hwEnd = p2.b; lp.h0 = h0; lp.h1 = h1;
+    S.loops.push(lp);
+  }
+  for (const f of S.files){
+    f.stamp = String(Math.floor(BASE_MS + f.t)).padStart(8, '0');
+    f.name = f.kind === 'pci' ? '190503trig1pos1_' + f.stamp : 'Bmode' + f.stamp;
+  }
+  const bms = S.files.filter(f => f.kind === 'bmode'), pcs = S.files.filter(f => f.kind === 'pci');
+  for (const p of pcs){
+    let pick = null;
+    for (const b of bms) if (Number(b.stamp) <= Number(p.stamp)) pick = b;
+    p.compilerPick = pick || bms[0];
+    p.truePick = bms.find(b => b.L === p.L);
+  }
+  return S;
+}
+
+// Replay a 30 min run and count which row each saved PCI file (frame 1) captured.
+function runCount(pr, prm){
+  const one = simulate(pr, prm, 1).loops[0].end;
+  const n = Math.ceil(30 * 60 * 1000 / one) + 4;
+  const S = simulate(pr, prm, n);
+  const counts = new Map(); let total = 0;
+  for (const p of S.pcis) if (p.saved && p.a <= 30 * 60 * 1000){ counts.set(p.row.i, (counts.get(p.row.i) || 0) + 1); total++; }
+  return {counts, total, loopMean:S.loops[Math.min(S.loops.length - 1, 200)].end / Math.min(S.loops.length, 201)};
+}
+/*SIM-END*/
+
+/* ---------- formatting ---------- */
+function fmt(ms){
+  const a = Math.abs(ms);
+  if (a < 1) return (ms * 1000).toFixed(a < 0.01 ? 2 : 1) + ' µs';
+  if (a < 1000) return ms.toFixed(a < 10 ? 2 : 1) + ' ms';
+  return (ms / 1000).toFixed(3) + ' s';
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- state ---------- */
+const prm = {scheme:'mach4e', trigAll:false, phasePct:0, hostPCI:1200, hostB:60, recon:8};
+let S = null, tour = [], step = 0, stepT = 0, mode = 'paused', speed = 20;
+let playhead = 0, view = {a:-40, b:2000}, anim = null, dirty = true;
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const $ = id => document.getElementById(id);
+const cv = $('tl'), ctx = cv.getContext('2d'), wrapEl = $('tlwrap');
+const st = $('strip'), sctx = st.getContext('2d');
+
+/* ---------- tokens ---------- */
+let K = {};
+function readTokens(){
+  const cs = getComputedStyle(document.documentElement);
+  for (const n of ['paper','panel','ink','muted','line','grid','chip','ekos','bmode','pci','host','warn','ok'])
+    K[n] = cs.getPropertyValue('--' + n).trim();
+  hatchCache = {};
+  dirty = true;
+}
+function rgba(hex, a){
+  let h = hex.replace('#','');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const n = parseInt(h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+let hatchCache = {};
+function hatch(color){
+  if (hatchCache[color]) return hatchCache[color];
+  const c = document.createElement('canvas'); c.width = c.height = 7;
+  const g = c.getContext('2d'); g.strokeStyle = color; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(-1, 8); g.lineTo(8, -1); g.stroke();
+  return (hatchCache[color] = ctx.createPattern(c, 'repeat'));
+}
+
+/* ---------- layout ---------- */
+const FONT_D = '"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif';
+const FONT_M = '"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace';
+const LANES = [
+  {key:'ekos', name:'EKOS pulse', short:'EKOS', sub:'height = power', h:62, col:'ekos'},
+  {key:'trig', name:'Trigger in', short:'Trigger', sub:'front-panel Trigger 2', h:36, col:'ink'},
+  {key:'seq', name:'Sequencer', short:'Seq.', sub:'Vantage NXT', h:40, col:'muted'},
+  {key:'bm', name:'B-mode', short:'B-mode', sub:'L11-5v, 128 lines', h:54, col:'bmode'},
+  {key:'pci', name:'PCI receive', short:'PCI', sub:'passive, 128 ch', h:54, col:'pci'},
+  {key:'host', name:'MATLAB host', short:'Host', sub:'Process events', h:44, col:'host'},
+  {key:'files', name:'Files saved', short:'Files', sub:'UserData folder', h:100, col:'ink'}
+];
+const AXIS = 30;
+let W = 0, H = 0, dpr = 1, gut = 136, narrow = false;
+const LY = {};
+function layout(){
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = wrapEl.clientWidth; narrow = W < 640; gut = narrow ? 70 : 140;
+  let y = AXIS;
+  for (const l of LANES){ LY[l.key] = {y, h:l.h}; y += l.h; }
+  H = y + 6;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.height = H + 'px';
+  layoutStrip();
+  dirty = true;
+}
+const plotW = () => W - gut - 10;
+const X = t => gut + (t - view.a) / (view.b - view.a) * plotW();
+const Tat = x => view.a + (x - gut) / plotW() * (view.b - view.a);
+const pxPerMs = () => plotW() / (view.b - view.a);
+
+function text(t, x, y, opts = {}){
+  ctx.font = opts.font || `500 12px ${FONT_D}`;
+  ctx.fillStyle = opts.color || K.ink;
+  ctx.textAlign = opts.align || 'left';
+  ctx.textBaseline = opts.base || 'middle';
+  let s = t;
+  if (opts.max != null){
+    if (opts.max < 18) return;
+    if (ctx.measureText(s).width > opts.max){
+      while (s.length > 2 && ctx.measureText(s + '…').width > opts.max) s = s.slice(0, -1);
+      if (s.length <= 2) return;
+      s += '…';
+    }
+  }
+  ctx.fillText(s, x, y);
+}
+
+/* ---------- drawing ---------- */
+function niceStep(span, px){
+  const target = span / Math.max(1, px / 92);
+  const p = Math.pow(10, Math.floor(Math.log10(target)));
+  for (const m of [1, 2, 5, 10]) if (m * p >= target) return m * p;
+  return 10 * p;
+}
+function tickLabel(t, step){
+  if (step >= 1000){ const d = Math.max(0, -Math.floor(Math.log10(step / 1000))); return (t / 1000).toFixed(d) + ' s'; }
+  const d = Math.max(0, -Math.floor(Math.log10(step)));
+  return t.toFixed(Math.min(4, d)) + ' ms';
+}
+
+function draw(){
+  if (!S) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = K.panel; ctx.fillRect(0, 0, W, H);
+  LANES.forEach((l, i) => {
+    const {y, h} = LY[l.key];
+    if (i % 2 === 1){ ctx.fillStyle = rgba(K.ink, 0.025); ctx.fillRect(0, y, W, h); }
+    ctx.strokeStyle = K.grid; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke();
+  });
+  const step = niceStep(view.b - view.a, plotW());
+  ctx.save(); ctx.beginPath(); ctx.rect(gut, 0, W - gut, H); ctx.clip();
+  const t0 = Math.ceil(view.a / step) * step;
+  for (let t = t0, n = 0; t <= view.b && n < 200; t += step, n++){
+    const x = Math.round(X(t)) + 0.5;
+    ctx.strokeStyle = K.grid; ctx.beginPath(); ctx.moveTo(x, AXIS - 6); ctx.lineTo(x, H); ctx.stroke();
+    text(tickLabel(t, step), x + 4, 12, {font:`400 11px ${FONT_M}`, color:K.muted});
+  }
+  drawEkos(); drawTrig(); drawSeq(); drawBmode(); drawPci(); drawHost(); drawFiles();
+  const px = X(playhead);
+  if (px >= gut && px <= W){
+    ctx.strokeStyle = K.warn; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(px, AXIS - 4); ctx.lineTo(px, H); ctx.stroke();
+    ctx.fillStyle = K.warn; ctx.beginPath(); ctx.moveTo(px - 5, AXIS - 10); ctx.lineTo(px + 5, AXIS - 10); ctx.lineTo(px, AXIS - 3); ctx.fill();
+  }
+  ctx.restore();
+  ctx.fillStyle = K.panel; ctx.fillRect(0, 0, gut, H);
+  ctx.strokeStyle = K.line; ctx.beginPath(); ctx.moveTo(gut - 0.5, 0); ctx.lineTo(gut - 0.5, H); ctx.stroke();
+  text(narrow ? 'from Event 1' : 'time from Event 1', 10, 12, {font:`400 11px ${FONT_M}`, color:K.muted});
+  for (const l of LANES){
+    const {y, h} = LY[l.key];
+    ctx.fillStyle = K[l.col]; ctx.fillRect(10, y + h / 2 - (narrow ? 4 : 11), 3, narrow ? 8 : 9);
+    if (narrow){
+      text(l.short, 18, y + h / 2, {font:`600 12px ${FONT_D}`, max:gut - 22});
+    } else {
+      text(l.name, 20, y + h / 2 - 7, {font:`600 13px ${FONT_D}`, max:gut - 26});
+      text(l.sub, 20, y + h / 2 + 9, {font:`400 11px ${FONT_D}`, color:K.muted, max:gut - 26});
+    }
+  }
+}
+
+function drawEkos(){
+  const {y, h} = LY.ekos, base = y + h - 8, top = y + 8, full = base - top;
+  const ps = S.train.pulsesIn(view.a, view.b);
+  const cyclePx = pxPerMs() / F_EKOS;
+  for (const p of ps){
+    const xa = X(p.s), xb = X(p.e);
+    if (xb < gut - 2 || xa > W) continue;
+    if (p.r.W === 0){
+      ctx.fillStyle = rgba(K.muted, 0.35); ctx.fillRect(xa, base - 2, Math.max(1, xb - xa), 2);
+      if (xb - xa > 60) text('0 W', xa + 3, base - 10, {font:`400 10px ${FONT_D}`, color:K.muted, max:xb - xa - 4});
+      continue;
+    }
+    const hh = Math.max(6, full * p.r.W / MAXW);
+    ctx.fillStyle = rgba(K.ekos, 0.3); ctx.fillRect(xa, base - hh, Math.max(1.5, xb - xa), hh);
+    ctx.fillStyle = K.ekos; ctx.fillRect(xa, base - hh, Math.max(1.5, xb - xa), 2);
+    if (cyclePx >= 3.5){
+      const ta = Math.max(p.s, view.a), tb = Math.min(p.e, view.b);
+      const amp = hh / 2 - 3, cy = base - hh / 2;
+      const n = Math.min(4000, Math.ceil((tb - ta) * F_EKOS * 14));
+      ctx.strokeStyle = K.ekos; ctx.lineWidth = 1.2; ctx.beginPath();
+      for (let i = 0; i <= n; i++){
+        const t = ta + (tb - ta) * i / n, yy = cy - amp * Math.sin(2 * Math.PI * F_EKOS * (t - p.s));
+        i ? ctx.lineTo(X(t), yy) : ctx.moveTo(X(t), yy);
+      }
+      ctx.stroke();
+    }
+    const vis = Math.min(xb, W) - Math.max(xa, gut);
+    if (vis > 70) text(`row ${p.r.i} · ${p.r.W} W · ${p.r.pd} ms`, Math.max(xa, gut) + 4, top + 6, {font:`500 11px ${FONT_D}`, color:K.ekos, max:vis - 6});
+    else if (pxPerMs() * S.train.minPri > 26) text(`${Math.round(p.r.W)}`, xa + (xb - xa) / 2, base - hh - 7, {font:`500 10px ${FONT_M}`, color:K.ekos, align:'center'});
+  }
+}
+
+const usedKey = t => Math.round(t * 1000);
+let usedMap = new Map();
+function drawTrig(){
+  const {y, h} = LY.trig;
+  const ps = S.train.pulsesIn(view.a, view.b).filter(p => S.train.sends(p.r));
+  if (ps.length > 1500) return;
+  const lo = y + h - 9, hi = y + 9, gw = Math.min(6, Math.max(2, pxPerMs() * S.train.minPri * 0.2));
+  for (const p of ps){
+    const x = X(p.s);
+    if (x < gut - 10 || x > W + 10) continue;
+    const u = usedMap.get(usedKey(p.s));
+    ctx.strokeStyle = u ? K.ink : rgba(K.muted, 0.7); ctx.lineWidth = u ? 1.8 : 1;
+    ctx.beginPath(); ctx.moveTo(x - gw, lo); ctx.lineTo(x, lo); ctx.lineTo(x, hi); ctx.lineTo(x + gw, hi); ctx.stroke();
+    if (u){
+      ctx.fillStyle = K.ink; ctx.beginPath(); ctx.arc(x, hi, 3, 0, Math.PI * 2); ctx.fill();
+      if (pxPerMs() * S.train.minPri > 70) text('→ ' + u.what, x + 9, y + h / 2 + 1, {font:`500 11px ${FONT_D}`, max:pxPerMs() * S.train.minPri - 20});
+    }
+  }
+}
+
+function drawSeq(){
+  const {y, h} = LY.seq;
+  for (const s of S.seq){
+    const xa = X(s.a), xb = X(s.b);
+    if (xb < gut || xa > W) continue;
+    const w = Math.max(1, xb - xa), top = y + 7, hh = h - 14;
+    if (s.type === 'wait'){ ctx.fillStyle = hatch(rgba(K.muted, 0.45)); ctx.fillRect(xa, top, w, hh); }
+    else if (s.type === 'trig'){ ctx.fillStyle = rgba(K.ink, 0.06); ctx.fillRect(xa, top, w, hh); ctx.setLineDash([3, 3]); ctx.strokeStyle = K.muted; ctx.strokeRect(xa + 0.5, top + 0.5, w - 1, hh - 1); ctx.setLineDash([]); }
+    else {
+      const c = s.type === 'bmode' ? K.bmode : s.type === 'pci' ? K.pci : K.host;
+      ctx.fillStyle = rgba(c, 0.28); ctx.fillRect(xa, top, w, hh);
+    }
+    const vis = Math.min(xb, W) - Math.max(xa, gut);
+    if (vis > 50) text(s.label, Math.max(xa, gut) + 5, y + h / 2, {font:`500 11px ${FONT_D}`, max:vis - 10});
+  }
+}
+
+function drawBmode(){
+  const {y, h} = LY.bm, slotPx = LINE_SLOT * pxPerMs();
+  for (const d of S.dummy){
+    const x = X(d.t); if (x < gut - 8 || x > W + 8) continue;
+    ctx.fillStyle = K.panel; ctx.strokeStyle = K.bmode; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(x, y + 9); ctx.lineTo(x + 5, y + 15); ctx.lineTo(x, y + 21); ctx.lineTo(x - 5, y + 15); ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (pxPerMs() * WAIT_DELAY > 140) text('TX(1), no receive (Event ' + d.ev + ')', x + 9, y + 15, {font:`500 11px ${FONT_D}`, color:K.bmode, max:pxPerMs() * WAIT_DELAY - 20});
+  }
+  for (const f of S.frames){
+    const xa = X(f.a), xb = X(f.b);
+    if (xb < gut || xa > W) continue;
+    if (slotPx >= 3.5){
+      const j0 = Math.max(0, Math.floor((view.a - f.a) / LINE_SLOT)), j1 = Math.min(NLINES - 1, Math.ceil((view.b - f.a) / LINE_SLOT));
+      for (let j = j0; j <= j1; j++){
+        const ta = f.a + j * LINE_SLOT, x0 = X(ta), x1 = X(ta + LINE_RX);
+        ctx.fillStyle = rgba(K.bmode, 0.28); ctx.fillRect(x0, y + 22, Math.max(1, x1 - x0), h - 30);
+        ctx.fillStyle = K.bmode; ctx.fillRect(x0, y + 12, Math.max(1.5, Math.min(3, slotPx * 0.06)), h - 20);
+        if (slotPx >= 40) text('line ' + (j + 1), x0 + 5, y + 16, {font:`500 11px ${FONT_D}`, color:K.bmode, max:slotPx - 8});
+        else if (slotPx >= 14 && (j + 1) % 16 === 0) text(String(j + 1), x0 + 3, y + 16, {font:`400 10px ${FONT_M}`, color:K.bmode});
+      }
+    } else {
+      ctx.fillStyle = rgba(K.bmode, 0.32); ctx.fillRect(xa, y + 12, Math.max(1.5, xb - xa), h - 20);
+      ctx.fillStyle = K.bmode; ctx.fillRect(xa, y + 12, Math.max(1.5, Math.min(2, xb - xa)), h - 20);
+      const vis = Math.min(xb, W) - Math.max(xa, gut);
+      if (vis > 60) text(`Frame ${f.i} · 128 lines · 18.03 ms`, Math.max(xa, gut) + 5, y + h / 2 + 2, {font:`500 11px ${FONT_D}`, max:vis - 8});
+      else if (xa > gut && pxPerMs() * 100 > 60) text(`F${f.i}`, xa + 5, y + h / 2 + 2, {font:`600 11px ${FONT_D}`, color:K.bmode});
+    }
+  }
+}
+
+function drawPci(){
+  const {y, h} = LY.pci;
+  for (const p of S.pcis){
+    const xa = X(p.a), xb = X(p.b);
+    if (xb < gut || xa > W) continue;
+    const w = Math.max(1.5, xb - xa);
+    if (p.saved){ ctx.fillStyle = rgba(K.pci, 0.26); ctx.fillRect(xa, y + 9, w, h - 18); }
+    else { ctx.fillStyle = hatch(rgba(K.pci, 0.7)); ctx.fillRect(xa, y + 9, w, h - 18); }
+    ctx.strokeStyle = K.pci; ctx.lineWidth = 1; ctx.strokeRect(xa + 0.5, y + 9.5, w - 1, h - 19);
+    const wa = X(p.a + LIVE_A), wb = X(p.a + LIVE_B);
+    if (wb - wa >= 2){
+      ctx.fillStyle = rgba(K.pci, 0.6); ctx.fillRect(wa, y + 9, wb - wa, h - 18);
+      if (wb - wa > 70) text('288–576 µs live window', wa + 4, y + h - 13, {font:`500 11px ${FONT_D}`, color:K.panel, max:wb - wa - 8});
+    }
+    const vis = Math.min(xb, W) - Math.max(xa, gut);
+    const lab = `PCI frame ${p.k} · ${fmt(S.pr.rec)} · captures ${rowTag(p.row)}` + (p.saved ? ' · saved' : ' · never saved');
+    if (vis > 50) text(lab, Math.max(xa, gut) + 5, y + 19, {font:`600 11px ${FONT_D}`, color:K.ink, max:vis - 8});
+    else if (xa > gut && pxPerMs() * 100 > 40) text(`P${p.k}`, xb + 4, y + h / 2, {font:`600 11px ${FONT_D}`, color:K.pci});
+  }
+}
+
+function drawHost(){
+  const {y, h} = LY.host;
+  for (const x of S.xfer){
+    const px = X(x.t); if (px < gut - 5 || px > W + 5) continue;
+    ctx.fillStyle = K.muted; ctx.beginPath(); ctx.moveTo(px - 4, y + 6); ctx.lineTo(px + 4, y + 6); ctx.lineTo(px, y + 12); ctx.fill();
+  }
+  for (const b of S.host){
+    const xa = X(b.a), xb = X(b.b);
+    if (xb < gut || xa > W) continue;
+    ctx.fillStyle = rgba(K.host, b.type === 'recon' ? 0.2 : 0.3);
+    ctx.fillRect(xa, y + 13, Math.max(1.5, xb - xa), h - 20);
+    ctx.fillStyle = K.host; ctx.fillRect(xa, y + 13, Math.max(1.5, Math.min(2, xb - xa)), h - 20);
+    const vis = Math.min(xb, W) - Math.max(xa, gut);
+    if (vis > 50) text(b.label, Math.max(xa, gut) + 5, y + h / 2 + 3, {font:`500 11px ${FONT_D}`, max:vis - 8});
+  }
+}
+
+function arc(x0, x1, yb, lift, color, dashed){
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash(dashed ? [5, 4] : []);
+  ctx.beginPath(); ctx.moveTo(x0, yb); ctx.bezierCurveTo(x0, yb - lift, x1, yb - lift, x1, yb); ctx.stroke(); ctx.setLineDash([]);
+}
+function drawFiles(){
+  const {y, h} = LY.files, my = y + 58;
+  for (const f of S.files){
+    const fx = X(f.t), src = f.src;
+    const sx = X(Math.min(Math.max((src.a + src.b) / 2, view.a), view.b));
+    const lane = f.kind === 'pci' ? LY.pci : LY.bm;
+    if ((fx < gut && sx < gut) || (fx > W && sx > W)) continue;
+    const c = f.kind === 'pci' ? K.pci : K.bmode;
+    ctx.strokeStyle = rgba(c, 0.75); ctx.lineWidth = 1.3; ctx.setLineDash([2, 3]);
+    const ty = lane.y + lane.h - 9;
+    ctx.beginPath(); ctx.moveTo(fx, my - 6); ctx.bezierCurveTo(fx, lane.y + lane.h + 14, sx, lane.y + lane.h + 14, sx, ty); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(sx - 4, ty + 6); ctx.lineTo(sx + 4, ty + 6); ctx.lineTo(sx, ty); ctx.fill();
+  }
+  for (const p of S.files.filter(f => f.kind === 'pci')){
+    const x0 = X(p.t);
+    if (p.truePick){ const x1 = X(p.truePick.t); if (!(x0 > W && x1 > W) && !(x0 < gut && x1 < gut)) arc(x0, x1, my - 7, 20, K.ok, false); }
+    if (p.compilerPick && p.compilerPick !== p.truePick){ const x1 = X(p.compilerPick.t); if (!(x0 > W && x1 > W) && !(x0 < gut && x1 < gut)) arc(x0, x1, my - 7, 46, K.warn, true); }
+  }
+  for (const f of S.files){
+    const x = X(f.t); if (x < gut - 220 || x > W + 10) continue;
+    const c = f.kind === 'pci' ? K.pci : K.bmode;
+    ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, my, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = K.panel; ctx.lineWidth = 1.5; ctx.stroke();
+    let room = 260;
+    for (const g of S.files) if (g.t > f.t){ room = Math.min(room, X(g.t) - x - 6); break; }
+    text(f.name + '.mat', x + 9, my + 15, {font:`500 11px ${FONT_M}`, color:K.ink, max:room});
+    const sub = f.kind === 'pci' ? `contents: PCI frame 1 (${rowTag(f.src.row)})` : 'contents: displayed image after frame 4';
+    text(sub + ' (dotted line)', x + 9, my + 29, {font:`400 11px ${FONT_D}`, color:c, max:room});
+  }
+}
+
+/* ---------- readout ---------- */
+function nowRows(t){
+  const tr = S.train, rows = [];
+  const at = tr.at(t), into = t - at.s;
+  let ek;
+  if (at.r.W > 0 && into < at.r.pd) ek = `Firing: row ${at.r.i}, ${at.r.W} W, ${fmt(into)} into a ${at.r.pd} ms pulse`;
+  else if (at.r.W === 0) ek = `Row ${at.r.i}: 0 W, silent`;
+  else ek = `Off after row ${at.r.i}. Next row in ${fmt(at.s + at.r.pri - t)}`;
+  rows.push(['ekos', 'EKOS', ek]);
+  const pv = tr.prevTrig(t), u = usedMap.get(usedKey(pv.s));
+  rows.push(['ink', 'Trigger', `Last edge ${fmt(t - pv.s)} ago (row ${pv.r.i})` + (u ? `, taken by Event ${u.ev} (${u.what})` : ', ignored: nothing was waiting')]);
+  let sq = null; for (const s of S.seq) if (t >= s.a && t < s.b) sq = s;
+  rows.push(['muted', 'Sequencer', sq ? `${sq.label} (Event ${sq.ev})` : 'Starting the next event']);
+  let bm = '—';
+  for (const f of S.frames) if (t >= f.a && t <= f.b){
+    const j = Math.min(NLINES, Math.floor((t - f.a) / LINE_SLOT) + 1), ph = (t - f.a) - (j - 1) * LINE_SLOT;
+    const on = f.row.W > 0 && (t - f.a) < f.row.pd;
+    bm = `Frame ${f.i}, line ${j} of 128, ${ph < LINE_RX ? 'receiving echoes' : 'idle until the next line'}` + (on ? `, EKOS on at ${f.row.W} W` : '');
+  }
+  for (const d of S.dummy) if (Math.abs(t - d.t) < Math.max(0.05, 3 / pxPerMs())) bm = `Event ${d.ev} fires TX(1) with no receive`;
+  rows.push(['bmode', 'B-mode', bm]);
+  let pc = '—';
+  for (const p of S.pcis) if (t >= p.a && t <= p.b){
+    const n = Math.min(S.pr.ns, Math.floor((t - p.a) * FS_PER_MS) + 1), w = (t - p.a) >= LIVE_A && (t - p.a) <= LIVE_B;
+    pc = `Frame ${p.k} (${rowTag(p.row)}), sample ${n.toLocaleString()} of ${S.pr.ns.toLocaleString()}` + (w ? ', inside the live window' : '') + (p.saved ? '' : ', will not be saved');
+  }
+  rows.push(['pci', 'PCI', pc]);
+  let hs = '—'; for (const b of S.host) if (t >= b.a && t <= b.b) hs = b.label;
+  rows.push(['host', 'Host', hs]);
+  let lf = null; for (const f of S.files) if (f.t <= t) lf = f;
+  rows.push(['ink', 'Files', lf ? `Last written: ${lf.name}.mat` : 'Nothing saved yet in this replay']);
+  return rows;
+}
+let lastNow = 0;
+function updateNow(force){
+  const n = performance.now();
+  if (!force && n - lastNow < 120) return; lastNow = n;
+  $('nowT').textContent = 't = ' + fmt(playhead);
+  $('nowList').innerHTML = nowRows(playhead).map(([c, k, v]) => `<dt><span class="sw" style="background:var(--${c})"></span>${k}</dt><dd>${esc(v)}</dd>`).join('');
+}
+
+/* ---------- tour ---------- */
+const linesDuring = r => r.W > 0 ? Math.min(128, Math.ceil(r.pd / LINE_SLOT - 1e-9)) : 0;
+function buildTour(){
+  const tr = S.train, isM = S.pr.rows.length > 1;
+  const f = S.frames.filter(x => x.L === 0), P = S.pcis.filter(x => x.L === 0), L0 = S.loops[0], L1 = S.loops[1];
+  const fp = S.files.find(x => x.kind === 'pci' && x.L === 0), fb = S.files.find(x => x.kind === 'bmode' && x.L === 0);
+  const fp1 = S.files.find(x => x.kind === 'pci' && x.L === 1);
+  const n1 = linesDuring(f[0].row);
+  const mb = (S.pr.ns * 128 * 4 / 1e6).toFixed(0);
+  const pr0 = P[0].row;
+  const cover = pr0.W === 0 ? `This trigger came from a 0 W row, so the record holds no therapy pulse at all.`
+    : S.pr.rec >= pr0.pd ? `That covers the whole ${pr0.pd} ms pulse of ${rowTag(pr0)}, plus ${fmt(S.pr.rec - pr0.pd)} after it.`
+    : `That covers only the first ${fmt(S.pr.rec)} of the ${pr0.pd} ms pulse.`;
+  const beat = isM
+    ? `The MACH4e table plays rows 0 to 5 as six pulses (9, 15, 30, 47, 30, 15 W; 8.06 to 4 ms long) in 254 ms. Rows 6 to 29 are 0 W, so the cycle is silent for 1.14 s and repeats every ${fmt(tr.Tc)}. ${prm.trigAll ? 'In this setting every row, including the 0 W ones, raises Trigger 2.' : 'Each powered pulse raises Trigger 2 at its onset (assumed: the 0 W rows send nothing).'}`
+    : `${S.pr.name}: ${tr.rows[0].pd} ms pulses every ${fmt(tr.Tc)} at ${tr.rows[0].W} W. Each pulse raises Trigger 2 at its onset.`;
+  const frameRows = f.map(x => x.row.W > 0 ? `${x.row.W} W` : '0 W').join(', ');
+  const v1 = [-40, Math.max(f[3].b, P[1].b) + 60];
+  return [
+    {title:'One loop of the sequence', view:[-40, L0.end + 160], from:0, to:0, dur:7,
+     text:`Acquisition takes ${fmt(L0.hwEnd)}: four B-mode frames, then two PCI records, each started by an EKOS trigger. MATLAB then spends ${fmt(L0.end - L0.hwEnd)} writing files (an assumed time you can change below) before Event 532 jumps back to Event 1.`},
+    {title:'EKOS runs its own sequence', view:[-30, Math.min(tr.Tc, 1600) + 80], from:0, to:Math.min(tr.Tc, 1600), dur:9,
+     text:beat + ' The scanner never starts a pulse; it can only wait for one.'},
+    {title:'A transmit with nothing recorded, then a wait', view:[-3, f[0].a + 22], from:0, to:f[0].a, dur:8,
+     text:`Event 1 is labelled 'delay', but it has tx = 1 and rcv = 0, so TX(1) fires and nothing is received. SeqControl 6 then holds the next acquisition for 32.7 ms. Event 2 carries triggerIn, so the sequencer takes the next EKOS edge, at ${fmt(f[0].a)} (${rowTag(f[0].row)}).`},
+    {title:'B-mode frame 1: 128 lines in 18.03 ms', view:[f[0].a - 2, f[0].b + 3], from:f[0].a, to:f[0].b, dur:9,
+     text: n1 > 0 ? `Line 1 fires on the edge, then one line every 142 µs. This frame started on ${rowTag(f[0].row)}, so lines 1 to ${n1} (the left ${Math.round(n1 / 128 * 100)}% of the image) are acquired while that pulse is on. Which pulse a frame lands on, and so how much of it is exposed, changes from frame to frame.`
+       : `Line 1 fires on the edge, then one line every 142 µs. This frame started on a 0 W row, so no therapy pulse overlaps it.`},
+    {title:'Inside one line', view:[f[0].a - 0.05, f[0].a + 0.47], from:f[0].a, to:f[0].a + 0.43, dur:8,
+     text:`Each line is a focused transmit followed by a 92.4 µs receive, long enough for 60 mm depth plus the aperture diagonal. The orange trace is the 2.25 MHz therapy wave, one cycle per 0.44 µs, running underneath while the pulse is on.`},
+    {title:'Frames 2 to 4 take the next pulse they can', view:v1, from:f[0].b, to:f[3].b, dur:10,
+     text:`After line 128 the scanner waits 60.142 ms, fires the dummy transmit, waits 32.7 ms, and then takes the next trigger. Frame starts are therefore at least 110.9 ms apart. ${isM ? `Only six pulses come per 1.4 s cycle, so here the four frames land on ${frameRows} pulses and take ${fmt(f[3].a - f[0].a)} in total.` : `Here they start ${fmt(f[1].a - f[0].a)} apart.`}`},
+    {title:'PCI frame 1 records a whole pulse', view:[P[0].a - 2, P[0].b + 3], from:P[0].a, to:P[0].b, dur:9,
+     text:`Event 525 takes the next edge and records ${S.pr.ns.toLocaleString()} samples per channel at 31.25 MHz, which is ${fmt(S.pr.rec)}. Sample 1 is the edge. ${cover}`},
+    {title:'The 288 µs live window', view:[P[0].a - 0.08, P[0].a + 0.75], from:P[0].a, to:P[0].a + 0.65, dur:8,
+     text:`When "PCI display?" is on, savepci1 beamforms only samples 9,001 to 18,000, which is 288 to 576 µs after the edge. That is just for the live image. Your PCIComp maps come from ProcessData12_wholePulse, which works on the saved record offline.`},
+    {title:'PCI frame 2 is recorded, then dropped', view:[P[0].a - 20, P[1].b + 20], from:P[0].b, to:P[1].b, dur:8,
+     text:`Event 527 takes the next edge, ${fmt(P[1].a - P[0].a)} later (${rowTag(P[1].row)}), records it, and Event 528 transfers it. The event that would save it (savepci2) is commented out, so this record never reaches disk.`},
+    {title:'MATLAB writes two files, PCI first', view:[P[1].a - 60, L0.end + 120], from:P[1].b, to:L0.end, dur:9,
+     text:`savepci1 stamps the PCI file with milliseconds since midnight (${fp.stamp}) and writes about ${mb} MB. savebmode runs after it and stamps the B-mode file later (${fb.stamp}). That file holds the displayed image: frame 4 blended by persistence, acquired ${fmt(P[0].a - f[3].a)} before the saved PCI pulse.`},
+    {title:'Why timestamp pairing grabs the previous loop', view:[-40, L1.end + 200], from:L0.end, to:L1.end, dur:10,
+     text:`In each loop the PCI stamp is earlier than the B-mode stamp, although the B-mode was acquired first. The rule "latest B-mode at or before the PCI stamp" (used by the compiler and the merge script) pairs ${fp1.name} with ${fp1.compilerPick.name}, one loop (${fmt(L1.end - L0.end)}) too early. The right partner is the first B-mode stamped after the PCI file.`}
+  ];
+}
+
+function setCaption(){
+  const s = tour[step];
+  $('stepNo').textContent = `Step ${step + 1} of ${tour.length}`;
+  $('stepTitle').textContent = s.title;
+  $('stepText').textContent = s.text;
+  [...$('chapters').children].forEach((b, i) => { if (i === step) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); });
+}
+function animateView(a, b, instant){
+  if (instant || reduce){ view = {a, b}; anim = null; dirty = true; return; }
+  anim = {from:{...view}, to:{a, b}, t:0};
+}
+function goStep(i, instant){
+  step = Math.max(0, Math.min(tour.length - 1, i)); stepT = 0;
+  const s = tour[step]; playhead = s.from;
+  animateView(s.view[0], s.view[1], instant);
+  setCaption(); updateNow(true); dirty = true;
+}
+function setMode(m){
+  mode = m;
+  $('tourBtn').textContent = m === 'tour' ? 'Pause' : 'Play tour';
+  $('freeBtn').textContent = m === 'free' ? 'Pause' : 'Run freely';
+  dirty = true;
+}
+
+/* ---------- event log ---------- */
+function laneChip(c, name){ return `<span class="lane"><span class="sw" style="background:var(--${c})"></span>${name}</span>`; }
+function buildTable(){
+  const rows = [];
+  const f = S.frames.filter(x => x.L === 0), d = S.dummy.filter(x => x.L === 0), P = S.pcis.filter(x => x.L === 0), L0 = S.loops[0];
+  for (let i = 0; i < 4; i++){
+    const e0 = 131 * i;
+    rows.push([d[i].t, `${e0 + 1}`, laneChip('bmode', 'B-mode'), `'delay' event fires TX(1) with no receive. SeqControl 6 sets 32.7 ms to the next acquisition.`, d[i].t - 2, d[i].t + 40]);
+    rows.push([f[i].a, `${e0 + 2}`, laneChip('ink', 'Trigger'), `triggerIn takes the EKOS edge of ${rowTag(f[i].row)}; line 1 of frame ${i + 1} fires.`, f[i].a - 1, f[i].a + 12]);
+    rows.push([f[i].a + LINE_SLOT, `${e0 + 3}–${e0 + 129}`, laneChip('bmode', 'B-mode'), `Lines 2 to 128, 142 µs apart` + (linesDuring(f[i].row) ? `; lines 1 to ${linesDuring(f[i].row)} overlap the pulse.` : '.') + ` Line 128 (SeqControl 5) sets 60.142 ms to the next acquisition.`, f[i].a - 1, f[i].b + 2]);
+    rows.push([f[i].b, `${e0 + 130}–${e0 + 131}`, laneChip('host', 'Host'), `transferToHost, then reconstruction and display of frame ${i + 1} (persistence 10).`, f[i].b - 2, f[i].b + 14]);
+  }
+  P.forEach(p => {
+    rows.push([p.a, `${p.ev}`, laneChip('pci', 'PCI'), `triggerIn takes the EKOS edge of ${rowTag(p.row)}; ${fmt(S.pr.rec)} passive record starts at depth 0.` + (p.k === 1 ? ' SeqControl sets 15.7 ms to the next acquisition.' : ''), p.a - 1, p.b + 2]);
+    rows.push([p.b, `${p.ev + 1}`, laneChip('host', 'Host'), `transferToHost for PCI frame ${p.k}.` + (p.saved ? '' : ' Nothing processes this frame afterwards.'), p.b - 3, p.b + 20]);
+  });
+  const fp = S.files.find(x => x.kind === 'pci' && x.L === 0), fb = S.files.find(x => x.kind === 'bmode' && x.L === 0);
+  rows.push([L0.h0, '529', laneChip('host', 'Host'), `savepci1 converts PCI frame 1 to volts and saves <code>${fp.name}.mat</code>.`, L0.h0 - 20, L0.h1 + 40]);
+  rows.push([L0.h1, '530', laneChip('muted', 'Sequencer'), `returnToMatlab.`, L0.h1 - 20, L0.h1 + 40]);
+  rows.push([L0.h1, '531', laneChip('host', 'Host'), `savebmode copies the display window's image to <code>${fb.name}.mat</code>.`, L0.h1 - 20, L0.end + 40]);
+  rows.push([L0.end, '532', laneChip('muted', 'Sequencer'), `Jump back to Event 1; the next loop starts.`, L0.end - 30, L0.end + 140]);
+  rows.sort((a, b) => a[0] - b[0]);
+  $('evbody').innerHTML = rows.map((r, i) => `<tr tabindex="0" data-i="${i}"><td class="num">${fmt(r[0])}</td><td class="num">${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join('');
+  $('evbody').onclick = e => { const tr = e.target.closest('tr'); if (tr) jumpRow(rows[+tr.dataset.i]); };
+  $('evbody').onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ const tr = e.target.closest('tr'); if (tr){ e.preventDefault(); jumpRow(rows[+tr.dataset.i]); } } };
+}
+function jumpRow(r){
+  setMode('paused'); playhead = r[0]; animateView(r[4], r[5]); updateNow(true);
+  $('tlwrap').scrollIntoView({behavior: reduce ? 'auto' : 'smooth', block:'center'});
+}
+
+/* ---------- findings & constants ---------- */
+function buildFindings(){
+  const f = S.frames.filter(x => x.L === 0), P = S.pcis.filter(x => x.L === 0), L0 = S.loops[0], tr = S.train;
+  const mb = (S.pr.ns * 128 * 4 / 1e6).toFixed(0), isM = S.pr.rows.length > 1;
+  const lns = f.map(x => linesDuring(x.row));
+  const items = [
+    ['warn', 'Check your B-mode', 'B-mode overlaps the therapy pulse',
+     `Each frame starts on an EKOS edge, so its first lines are acquired while the catheter transmits. With the MACH4e widths that is 29 lines (4 ms pulse) up to 57 lines (8.06 ms pulse), on the left side of the image. In this replay the four frames overlap ${lns.join(', ')} lines. Harmonics of 2.25 MHz at 6.75 and 9 MHz fall in the L11-5v band.`],
+    ['warn', 'Test this on your data', isM ? 'The waits lock PCI onto one or two pulses' : 'Every trigger is a pulse',
+     isM ? `If only powered rows send a trigger, the fixed waits make PCI frame 1 land on row 5 (15 W, 5 ms) or row 2 (30 W, 6.86 ms), whatever the save time or starting point. It never captures the 4 ms or 8.06 ms pulses. If your saved files include 4 ms or 8 ms pulses, Trigger 2 is also firing on the 0 W rows. Then about 4 in 5 records hold no pulse; switch the trigger setting above to see that case.`
+         : `With a single-row protocol every trigger starts a real pulse.`],
+    ['info', 'MACH4e timing', isM ? 'Most of the cycle is silent' : 'Constant pulse train',
+     isM ? `Rows 0 to 5 are six pulses (9, 15, 30, 47, 30, 15 W) in 254 ms; rows 6 to 29 are 0 W. The cycle repeats every ${fmt(tr.Tc)}, so a frame that just misses the burst waits more than a second for the next trigger.`
+         : `One pulse every ${fmt(tr.Tc)}.`],
+    ['warn', 'Check your pairing', 'Timestamp pairing is off by one loop',
+     `<code>savepci1</code> stamps the PCI file before <code>savebmode</code> stamps the B-mode file, though the B-mode was acquired first. "Latest B-mode at or before the PCI stamp" therefore picks the previous loop's image, about ${fmt(L0.end)} older. Pair each PCI file with the first B-mode stamped after it instead.`],
+    ['info', 'Saved B-mode', 'The saved B-mode is the display, not a raw frame',
+     `Four frames are acquired per loop and one image is saved. <code>savebmode</code> copies the display window's image: frame 4 blended by persistence level 10, acquired ${fmt(P[0].a - f[3].a)} before the saved PCI pulse.`],
+    ['info', 'Saved PCI', 'Only PCI frame 1 reaches disk',
+     `Frame 2 (Event 527) is recorded ${fmt(P[1].a - P[0].a)} later and transferred, but <code>savepci2</code> is commented out, so nothing saves it. Each saved file holds ${S.pr.ns.toLocaleString()} samples × 128 channels in single precision, about ${mb} MB before compression.`],
+    ['info', 'Extra transmits', 'Each B-mode frame starts with a transmit nobody records',
+     `The 'delay' events (1, 132, 263, 394) have <code>tx = 1</code> and <code>rcv = 0</code>, so TX(1) fires four times per loop with no receive. Setting <code>tx</code> to the zero-apodization <code>PCITxIndex</code> would make them true delays.`],
+    ['info', 'Loop rate', 'Saving and the sequence set the loop rate',
+     `The hardware part of a loop takes ${fmt(L0.hwEnd)} here, because each wait has to end on a powered pulse. The rest is MATLAB writing files. The difference between consecutive <code>190503trig1pos1_</code> stamps is your true loop period in milliseconds; stamps reset at midnight.`],
+    ['warn', 'Check your dB scale', 'NXT levels are not calibrated in dB',
+     `<code>savepci1</code> still converts counts with the Vantage 256 factor 1/16384, and its own comment says absolute volts and dB need recalibration on the NXT. Fixed display references such as −59 dB from the 2022 data will not carry over to these recordings.`]
+  ];
+  $('findings').innerHTML = items.map(([k, kl, t, p]) => `<article class="find"><div class="k ${k}">${kl}</div><h3>${t}</h3><p>${p}</p></article>`).join('');
+  const consts = [
+    ['B-mode line slot', '142 µs'], ['B-mode frame', '18.03 ms'], ['PCI record', fmt(S.pr.rec)],
+    ['Live PCI window', '288–576 µs'], [isM ? 'MACH4e cycle' : 'Pulse period', fmt(tr.Tc)], ['Hardware time, first loop', fmt(L0.hwEnd)], ['First loop with saving', fmt(L0.end)]
+  ];
+  $('consts').innerHTML = consts.map(([a, b]) => `<div><dt>${a}</dt><dd>${b}</dd></div>`).join('');
+}
+
+/* ---------- sequence strip ---------- */
+let SW = 0, SH = 150, run = null;
+function layoutStrip(){
+  SW = st.parentElement.clientWidth - 32;
+  st.width = Math.round(SW * dpr); st.height = Math.round(SH * dpr); st.style.height = SH + 'px';
+}
+function drawStrip(){
+  if (!S || !run) return;
+  const tr = S.train;
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sctx.fillStyle = K.panel; sctx.fillRect(0, 0, SW, SH);
+  const xs = t => 4 + t / tr.Tc * (SW - 8), base = 92, full = 70;
+  sctx.strokeStyle = K.grid; sctx.beginPath(); sctx.moveTo(0, base + 0.5); sctx.lineTo(SW, base + 0.5); sctx.stroke();
+  const maxC = Math.max(1, ...run.counts.values());
+  for (const r of tr.rows){
+    const x0 = xs(r.off), x1 = xs(r.off + r.pd), w = Math.max(2, x1 - x0);
+    if (r.W === 0){ sctx.fillStyle = rgba(K.muted, 0.4); sctx.fillRect(x0, base - 2, w, 2); }
+    else {
+      const hh = full * r.W / MAXW;
+      sctx.fillStyle = rgba(K.ekos, 0.35); sctx.fillRect(x0, base - hh, w, hh);
+      sctx.fillStyle = K.ekos; sctx.fillRect(x0, base - hh, w, 2);
+    }
+    const c = run.counts.get(r.i) || 0;
+    if (c){
+      const ch = 28 * c / maxC;
+      sctx.fillStyle = rgba(K.pci, 0.75); sctx.fillRect(x0, base + 6, Math.max(3, w), ch);
+    }
+  }
+  sctx.font = `400 11px ${FONT_M}`; sctx.fillStyle = K.muted; sctx.textBaseline = 'alphabetic';
+  sctx.textAlign = 'left'; sctx.fillText('0 s', 4, 12);
+  sctx.textAlign = 'right'; sctx.fillText(fmt(tr.Tc), SW - 4, 12);
+  sctx.textAlign = 'left'; sctx.fillText('teal bars: saved PCI files that captured this row (30 min run)', 4, SH - 6);
+  const burst = tr.rows.filter(r => r.W > 0);
+  if (burst.length > 1){
+    const bx = xs(burst[burst.length - 1].off + burst[burst.length - 1].pri);
+    sctx.fillStyle = K.muted; sctx.textAlign = 'left';
+    if (SW - bx > 140) sctx.fillText(`rows ${burst.length}–${tr.rows.length - 1}: 0 W`, bx + 10, base - 10);
+  }
+}
+function updateRun(){
+  run = runCount(S.pr, prm);
+  const groups = new Map();
+  for (const [i, c] of run.counts){
+    const r = S.train.rows[i]; const key = r.W > 0 ? FOLDER(r.pd) : '0 W (no pulse)';
+    groups.set(key, (groups.get(key) || 0) + c);
+  }
+  const order = ['4ms', '5ms', '7ms', '8ms'];
+  const keys = [...groups.keys()].sort((a, b) => (order.indexOf(a) + 9) % 9 - (order.indexOf(b) + 9) % 9);
+  $('counts').innerHTML = `<span>30 min run: <b>${run.total}</b> saved PCI files</span>` + keys.map(k => `<span>${k}: <b>${groups.get(k)}</b></span>`).join('');
+  drawStrip();
+}
+
+/* ---------- rebuild ---------- */
+function rebuild(keepStep){
+  S = simulate(PROTOCOLS[prm.scheme], prm, 3);
+  usedMap = new Map(S.used.map(u => [usedKey(u.t), u]));
+  tour = buildTour();
+  $('chapters').innerHTML = tour.map((s, i) => `<button class="chap" type="button" data-i="${i}" title="${esc(s.title)}">${i + 1} · ${esc(s.title.length > 26 ? s.title.slice(0, 24) + '…' : s.title)}</button>`).join('');
+  buildFindings(); buildTable();
+  goStep(keepStep ? step : 0, true);
+  if (mode === 'free') setMode('paused');
+}
+
+/* ---------- loop ---------- */
+let lastT = performance.now();
+const ease = u => u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+function frame(now){
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  if (mode === 'tour'){
+    stepT += dt; const s = tour[step], u = Math.min(1, stepT / s.dur);
+    playhead = s.from + (s.to - s.from) * ease(u);
+    if (stepT > s.dur + 2.2){ if (step < tour.length - 1) goStep(step + 1); else setMode('paused'); }
+    dirty = true; updateNow();
+  } else if (mode === 'free'){
+    playhead += dt * speed;
+    const end = S.loops[S.loops.length - 1].end;
+    if (playhead > end){ playhead = 0; }
+    const span = view.b - view.a;
+    if (!anim && (playhead > view.b - 0.08 * span || playhead < view.a)) view = {a:playhead - 0.25 * span, b:playhead + 0.75 * span};
+    dirty = true; updateNow();
+  }
+  if (anim){
+    anim.t += dt / 1.1; const u = ease(Math.min(1, anim.t));
+    const c0 = (anim.from.a + anim.from.b) / 2, c1 = (anim.to.a + anim.to.b) / 2;
+    const s0 = anim.from.b - anim.from.a, s1 = anim.to.b - anim.to.a;
+    const sp = Math.exp(Math.log(s0) * (1 - u) + Math.log(s1) * u), c = c0 + (c1 - c0) * u;
+    view = {a:c - sp / 2, b:c + sp / 2};
+    if (anim.t >= 1){ view = {...anim.to}; anim = null; }
+    dirty = true;
+  }
+  if (dirty){ draw(); dirty = false; }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- interaction ---------- */
+function zoomAt(x, f){
+  const t = Tat(x), span = (view.b - view.a) * f;
+  const clamped = Math.min(Math.max(span, 0.05), 60000);
+  const r = (x - gut) / plotW();
+  view = {a:t - r * clamped, b:t + (1 - r) * clamped}; anim = null; dirty = true;
+}
+const ptrs = new Map(); let drag = null, pinch = null;
+wrapEl.addEventListener('pointerdown', e => {
+  wrapEl.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, {x:e.offsetX, y:e.offsetY});
+  if (ptrs.size === 1) drag = {x:e.offsetX, v:{...view}, moved:false};
+  if (ptrs.size === 2){ const [a, b] = [...ptrs.values()]; pinch = {d:Math.abs(a.x - b.x) || 1, v:{...view}, mid:(a.x + b.x) / 2}; drag = null; }
+});
+wrapEl.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, {x:e.offsetX, y:e.offsetY});
+  if (pinch && ptrs.size === 2){
+    const [a, b] = [...ptrs.values()], d = Math.abs(a.x - b.x) || 1;
+    const span = Math.min(Math.max((pinch.v.b - pinch.v.a) * pinch.d / d, 0.05), 60000);
+    const r = (pinch.mid - gut) / plotW(), tm = pinch.v.a + r * (pinch.v.b - pinch.v.a);
+    view = {a:tm - r * span, b:tm + (1 - r) * span}; anim = null; dirty = true;
+    if (mode !== 'paused') setMode('paused');
+  } else if (drag){
+    const dx = e.offsetX - drag.x;
+    if (Math.abs(dx) > 4) drag.moved = true;
+    if (drag.moved){
+      const sh = dx / plotW() * (drag.v.b - drag.v.a);
+      view = {a:drag.v.a - sh, b:drag.v.b - sh}; anim = null; dirty = true;
+      if (mode === 'tour') setMode('paused');
+    }
+  }
+});
+function endPtr(e){
+  if (!ptrs.has(e.pointerId)) return;
+  if (drag && !drag.moved && ptrs.size === 1 && e.offsetX > gut){
+    playhead = Tat(e.offsetX); if (mode === 'tour') setMode('paused'); updateNow(true); dirty = true;
+  }
+  ptrs.delete(e.pointerId);
+  if (ptrs.size < 2) pinch = null;
+  if (ptrs.size === 0) drag = null;
+}
+wrapEl.addEventListener('pointerup', endPtr);
+wrapEl.addEventListener('pointercancel', endPtr);
+wrapEl.addEventListener('wheel', e => {
+  if (e.ctrlKey || e.metaKey){ e.preventDefault(); zoomAt(e.offsetX, Math.exp(e.deltaY * 0.01)); if (mode === 'tour') setMode('paused'); }
+  else if (Math.abs(e.deltaX) > Math.abs(e.deltaY)){ e.preventDefault(); const sh = e.deltaX / plotW() * (view.b - view.a); view = {a:view.a + sh, b:view.b + sh}; dirty = true; if (mode === 'tour') setMode('paused'); }
+}, {passive:false});
+
+$('tourBtn').onclick = () => {
+  if (mode === 'tour'){ setMode('paused'); return; }
+  const s = tour[step];
+  if (step === tour.length - 1 && stepT >= s.dur) goStep(0); else if (stepT === 0 || Math.abs(view.a - s.view[0]) > 1e-9) goStep(step);
+  setMode('tour');
+};
+$('prevBtn').onclick = () => { goStep(step - 1); };
+$('nextBtn').onclick = () => { goStep(step + 1); };
+$('chapters').onclick = e => { const b = e.target.closest('button'); if (b) goStep(+b.dataset.i); };
+$('freeBtn').onclick = () => setMode(mode === 'free' ? 'paused' : 'free');
+$('speed').onchange = e => { speed = +e.target.value; };
+$('preset').onchange = e => {
+  const v = e.target.value; e.target.value = ''; if (!v) return;
+  const f0 = S.frames[0], p0 = S.pcis[0], L0 = S.loops[0], L1 = S.loops[1];
+  const m = {loop:[-40, L0.end + 160], two:[-40, L1.end + 200], frame:[f0.a - 2, f0.b + 3], line:[f0.a - 0.05, f0.a + 0.47], pci:[p0.a - 2, p0.b + 3], win:[p0.a - 0.08, p0.a + 0.75]}[v];
+  if (mode === 'tour') setMode('paused');
+  animateView(m[0], m[1]);
+};
+$('zin').onclick = () => { zoomAt(gut + plotW() / 2, 0.5); };
+$('zout').onclick = () => { zoomAt(gut + plotW() / 2, 2); };
+
+function bindRange(id, key, out, f){
+  const el = $(id);
+  const upd = () => { prm[key] = +el.value; $(out).textContent = f(+el.value); };
+  upd();
+  return {el, upd};
+}
+const cycleLen = () => makeTrain(PROTOCOLS[prm.scheme], 0, false).Tc;
+const phaseR = bindRange('phase', 'phasePct', 'phaseOut', v => fmt(v / 100 * cycleLen()) + ' into the cycle');
+const hostR = bindRange('hostPCI', 'hostPCI', 'hostPCIOut', v => fmt(v));
+const hostBR = bindRange('hostB', 'hostB', 'hostBOut', v => fmt(v));
+let rebuildTimer = null;
+function scheduleRebuild(){
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(() => { rebuild(true); updateRun(); }, 80);
+}
+phaseR.el.oninput = () => { phaseR.upd(); scheduleRebuild(); };
+hostR.el.oninput = () => { hostR.upd(); scheduleRebuild(); };
+hostBR.el.oninput = () => { hostBR.upd(); scheduleRebuild(); };
+$('scheme').onchange = e => { prm.scheme = e.target.value; phaseR.upd(); scheduleRebuild(); };
+$('trigAll').onchange = e => { prm.trigAll = e.target.value === '1'; scheduleRebuild(); };
+
+/* ---------- boot ---------- */
+readTokens();
+const mq = window.matchMedia('(prefers-color-scheme: dark)');
+if (mq.addEventListener) mq.addEventListener('change', () => { readTokens(); drawStrip(); });
+new MutationObserver(() => { readTokens(); drawStrip(); }).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
+layout();
+rebuild(false);
+updateRun();
+new ResizeObserver(() => { layout(); drawStrip(); }).observe(wrapEl);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { dirty = true; drawStrip(); });
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
